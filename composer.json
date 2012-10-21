@@ -1,0 +1,20 @@
+{
+    "name": "redisorm/redisorm",
+    "type": "library",
+    "version": "0.1.0",
+    "description": "PHP ORM for Redis",
+    "keywords": ["orm","redis","lighweight"],
+    "homepage": "http://github.com/ichiriac/redisorm/",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ioan CHIRIAC",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=5.3.0",
+        "predis/predis": "dev-master"
+    },
+    "minimum-stability": "dev"
+}
