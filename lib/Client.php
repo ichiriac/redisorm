@@ -23,6 +23,18 @@ class ClientRedisError extends ClientError
     
 }
 
+
+/**
+ * A light Redis client
+ * <code>
+ *  $client = new redis\orm\Client();
+ *  $response = $client
+ *      ->set('increment', 10)
+ *      ->incr('increment')
+ *      ->read();
+ *  var_dump($respose); // array( 0 => true, 1 => 11 );
+ * </code>
+ */
 class Client
 {
 
