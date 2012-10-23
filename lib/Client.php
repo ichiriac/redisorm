@@ -68,6 +68,45 @@ class Client
     }
 
     /**
+     * Set key to hold the string value. 
+     * If key already holds a value, it is overwritten, regardless of its type.
+     * @param string $key
+     * @param string $value
+     * @return \redis\orm\Client
+     * @link http://redis.io/commands/set
+     */
+    public function set( $key, $value ) {
+        return $this->__call( 'set', array($key, $value));
+    }
+    
+    /**
+     * Increments the number stored at key by one. If the key does not exist, 
+     * it is set to 0 before performing the operation. An error is returned if 
+     * the key contains a value of the wrong type or contains a string that can 
+     * not be represented as integer. 
+     * 
+     * This operation is limited to 64 bit signed integers.
+     * 
+     * Note: this is a string operation because Redis does not have a dedicated 
+     * integer type. The string stored at the key is interpreted as a base-10 
+     * 64 bit signed integer to execute the operation.
+     * 
+     * Redis stores integers in their integer representation, so for string 
+     * values that actually hold an integer, there is no overhead for storing 
+     * the string representation of the integer.
+     * 
+     * @param string $key
+     * @param int $value
+     * @return \redis\orm\Client
+     * @link http://redis.io/commands/set
+     */
+    public function incr( $key, $value = 1 ) {
+        if ( $value === 1 ) {
+            return $this->__call('INCR', array($key, $value));
+        } // @todo else
+    }
+    
+    /**
      * Reads the redis response
      * @return mixed
      * @throws ClientError
