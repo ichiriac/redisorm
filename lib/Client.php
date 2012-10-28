@@ -3,26 +3,33 @@ namespace redis\orm;
 
 defined('CRLF') OR define('CRLF', "\r\n");
 
-class ClientError extends Exception
+class ClientError extends \Exception
 {
-    
+
+    const TYPE = __CLASS__;
+
 }
 
 class ClientConnectionError extends ClientError
 {
-    
+
+    const TYPE = __CLASS__;
+
 }
 
 class ClientIOError extends ClientError
 {
-    
+
+    const TYPE = __CLASS__;
+
 }
 
 class ClientRedisError extends ClientError
 {
-    
-}
 
+    const TYPE = __CLASS__;
+
+}
 
 /**
  * A light Redis client
@@ -47,65 +54,132 @@ class Client
      * @param string $dsn
      * @throws ClientConnectionError
      */
-    public function __construct($dsn = 'tcp://localhost:6379')
+    public function __construct($dsn = 'tcp://localhost:6379', $db = 0, $auth = null)
     {
+        $code = null;
+        $error = null;
         $this->_socket = stream_socket_client(
-            $dsn, $code, $error, 2, STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT
+            $dsn, $code, $error, 1, STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT
         );
         if ($this->_socket === false) {
-            throw new ClientConnectionError(
+            $this->onConnectionError(
                 $error, $code
             );
+        }
+        if (!empty($auth)) {
+            $this->__call('AUTH', array($auth));
+        }
+        $this->__call('SELECT', array($db));
+    }
+
+    /**
+     * Raise an connection error
+     * @param string $error
+     * @param int $code
+     * @throws ClientConnectionError
+     */
+    protected function onConnectionError($error, $code = 0)
+    {
+        $this->onError(ClientConnectionError::TYPE, $error, $code);
+    }
+
+    /**
+     * Raise an client error
+     * @param string $error
+     * @throws ClientError
+     */
+    protected function onClientError($error)
+    {
+        $this->onError(ClientError::TYPE, $error);
+    }
+
+    /**
+     * Raise an Redis error
+     * @param string $error
+     * @throws ClientRedisError
+     */
+    protected function onClientRedisError($error)
+    {
+        $this->onError(ClientRedisError::TYPE, $error);
+    }
+
+    /**
+     * Raise an client IO error
+     * @param string $error
+     * @throws ClientIOError
+     */
+    protected function onClientIOError($error)
+    {
+        if ($this->_socket) {
+            fclose($this->_socket);
+        }
+        $this->onError(ClientIOError::TYPE, $error);
+    }
+
+    /**
+     * Raise an error
+     * @param string $type
+     * @param string $error
+     * @param int $code
+     * @throws $type
+     */
+    protected function onError($type, $error, $code = 0)
+    {
+        throw new $type($error, $code);
+    }
+
+    /**
+     * Sets field in the hash stored at key to value. If key does not exist, 
+     * a new key holding a hash is created. If field already exists in the 
+     * hash, it is overwritten.
+     * 
+     * @param string $key
+     * @param string|array $field
+     * @param string $value
+     * @return \redis\orm\Client
+     * @link http://redis.io/commands/hset
+     * @link http://redis.io/commands/hmset
+     */
+    public function hset($key, $field, $value = null)
+    {
+        if (is_array($field)) {
+            array_unshift($field, $key);
+            return $this->__call('HMSET', $field);
+        } else {
+            return $this->__call('HSET', array($key, $field, $value));
+        }
+    }
+
+    public function hget($key, $field)
+    {
+        if (is_array($field)) {
+            array_unshift($field, $key);
+            return $this->__call('HMGET', $field);
+        } else {
+            return $this->__call('HGET', array($key, $field));
         }
     }
 
     /**
-     * Close the redis connection
-     */
-    public function __destruct()
-    {
-        fclose($this->_socket);
-    }
-
-    /**
-     * Set key to hold the string value. 
-     * If key already holds a value, it is overwritten, regardless of its type.
-     * @param string $key
-     * @param string $value
-     * @return \redis\orm\Client
-     * @link http://redis.io/commands/set
-     */
-    public function set( $key, $value ) {
-        return $this->__call( 'set', array($key, $value));
-    }
-    
-    /**
-     * Increments the number stored at key by one. If the key does not exist, 
-     * it is set to 0 before performing the operation. An error is returned if 
-     * the key contains a value of the wrong type or contains a string that can 
-     * not be represented as integer. 
+     * Increments the number stored at field in the hash stored at key by 
+     * increment. If key does not exist, a new key holding a hash is created. 
+     * If field does not exist the value is set to 0 before the operation 
+     * is performed.
      * 
-     * This operation is limited to 64 bit signed integers.
-     * 
-     * Note: this is a string operation because Redis does not have a dedicated 
-     * integer type. The string stored at the key is interpreted as a base-10 
-     * 64 bit signed integer to execute the operation.
-     * 
-     * Redis stores integers in their integer representation, so for string 
-     * values that actually hold an integer, there is no overhead for storing 
-     * the string representation of the integer.
+     * The range of values supported by HINCRBY is limited to 64 bit 
+     * signed integers.
      * 
      * @param string $key
+     * @param string $field
      * @param int $value
      * @return \redis\orm\Client
-     * @link http://redis.io/commands/set
+     * @link http://redis.io/commands/hincrby
      */
-    public function incr( $key, $value = 1 ) {
-        if ( $value === 1 ) {
-            return $this->__call('INCR', array($key, $value));
-        } // @todo else
+    public function hincr($key, $field, $value = 1)
+    {
+        return $this->__call('HINCRBY', array($key, $field, $value));
     }
-    
+
     /**
      * Reads the redis response
      * @return mixed
@@ -116,11 +190,11 @@ class Client
         if (!empty($this->_stack))
             $this->flush();
         if ($this->_responses === 0) {
-            throw new ClientError(
+            $this->onClientError(
                 'No pending response found'
             );
         }
-        if ($this->_responses === 0) {
+        if ($this->_responses === 1) {
             $response = $this->_read();
         } else {
             $response = new \SplFixedArray($this->_responses);
@@ -142,17 +216,19 @@ class Client
     {
         $size = count($this->_stack);
         if ($size === 0) {
-            throw new ClientError(
+            $this->onClientError(
                 'No pending requests'
             );
         }
         $this->_responses += $size;
         $buffer = implode(null, $this->_stack);
+        $this->_stack = array();
         $blen = strlen($buffer);
+        $fwrite = null;
         for ($written = 0; $written < $blen; $written += $fwrite) {
             $fwrite = fwrite($this->_socket, substr($buffer, $written));
             if ($fwrite === false || $fwrite <= 0) {
-                throw new ClientIOError('Failed to write entire command to stream');
+                $this->onClientIOError('Failed to write entire command to stream');
             }
         }
         return $this;
@@ -181,7 +257,7 @@ class Client
         for ($written = 0; $written < strlen($command); $written += $fwrite) {
             $fwrite = fwrite($this->_socket, substr($command, $written));
             if ($fwrite === FALSE || $fwrite <= 0) {
-                throw new ClientIOError(
+                $this->onClientIOError(
                     'Failed to write entire command to stream'
                 );
             }
@@ -199,7 +275,7 @@ class Client
     {
         $reply = trim(fgets($this->_socket, 512));
         if ($reply === false) {
-            throw new ClientIOError(
+            $this->onClientIOError(
                 'Network error - unable to read header response'
             );
         }
@@ -211,7 +287,7 @@ class Client
                 ;
                 break;
             case '-': // error
-                throw new ClientRedisError(trim(substr($reply, 4)));
+                $this->onClientRedisError(trim(substr($reply, 4)));
                 break;
             case ':': // inline numeric
                 return intval(substr($reply, 1));
@@ -227,7 +303,7 @@ class Client
                         $block_size = ($size - $read) > 1024 ? 1024 : ($size - $read);
                         $r = fread($this->_socket, $block_size);
                         if ($r === FALSE) {
-                            throw new ClientIOError(
+                            $this->onClientIOError(
                                 'Failed to read bulk response from stream'
                             );
                         } else {
@@ -253,7 +329,7 @@ class Client
                 }
                 break;
         }
-        throw new ClientRedisError(
+        $this->onClientRedisError(
             'Undefined protocol response type'
         );
     }
@@ -268,7 +344,7 @@ class Client
     {
         $response =
             '*' . (count($args) + 1) . CRLF
-            . '$' . strlen($method)
+            . '$' . strlen($method) . CRLF
             . strtoupper($method);
         foreach ($args as $arg) {
             $response .= CRLF . '$' . strlen($arg) . CRLF . $arg;
