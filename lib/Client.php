@@ -5,30 +5,22 @@ defined('CRLF') OR define('CRLF', "\r\n");
 
 class ClientError extends \Exception
 {
-
     const TYPE = __CLASS__;
-
 }
 
 class ClientConnectionError extends ClientError
 {
-
     const TYPE = __CLASS__;
-
 }
 
 class ClientIOError extends ClientError
 {
-
     const TYPE = __CLASS__;
-
 }
 
 class ClientRedisError extends ClientError
 {
-
     const TYPE = __CLASS__;
-
 }
 
 /**
@@ -70,6 +62,13 @@ class Client
             $this->__call('AUTH', array($auth));
         }
         $this->__call('SELECT', array($db));
+        try {
+            $this->read();
+        } catch( ClientError $error ) {
+            $this->onConnectionError(
+                'Unable to connect : ' . $error->getMessage()
+            );
+        }
     }
 
     /**
@@ -80,6 +79,9 @@ class Client
      */
     protected function onConnectionError($error, $code = 0)
     {
+        if ($this->_socket) {
+            fclose($this->_socket);
+        }
         $this->onError(ClientConnectionError::TYPE, $error, $code);
     }
 
@@ -143,8 +145,12 @@ class Client
     public function hset($key, $field, $value = null)
     {
         if (is_array($field)) {
-            array_unshift($field, $key);
-            return $this->__call('HMSET', $field);
+            $args = array($key);
+            foreach( $field as $key => $value ) {
+              $args[] = $key;
+              $args[] = $value;
+            }
+            return $this->__call('HMSET', $args);
         } else {
             return $this->__call('HSET', array($key, $field, $value));
         }
@@ -288,6 +294,7 @@ class Client
                 break;
             case '-': // error
                 $this->onClientRedisError(trim(substr($reply, 4)));
+                return false;
                 break;
             case ':': // inline numeric
                 return intval(substr($reply, 1));
@@ -327,10 +334,11 @@ class Client
                         $i, $this->_read()
                     );
                 }
+                return $reply;
                 break;
         }
         $this->onClientRedisError(
-            'Undefined protocol response type'
+            'Undefined protocol response type : ' . $reply
         );
     }
 
