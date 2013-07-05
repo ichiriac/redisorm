@@ -12,9 +12,5 @@
             "role": "Developer"
         }
     ],
-    "require": {
-        "php": ">=5.3.0",
-        "predis/predis": "dev-master"
-    },
     "minimum-stability": "dev"
 }
